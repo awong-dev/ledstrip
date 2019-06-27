@@ -4,3 +4,6 @@
 [submodule "src/components/esp_cxx"]
 	path = src/components/esp_cxx
 	url = https://github.com/awong-dev/esp_cxx.git
+[submodule "src/components/mongoose/src"]
+	path = src/components/mongoose/src
+	url = https://github.com/cesanta/mongoose.git
