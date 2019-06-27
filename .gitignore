@@ -30,3 +30,8 @@
 *.exe
 *.out
 *.app
+
+third_party
+*.sw[op]
+src/build
+venv
