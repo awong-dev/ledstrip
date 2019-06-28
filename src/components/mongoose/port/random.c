@@ -1,8 +1,11 @@
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef FAKE_ESP_IDF
 #include <stdlib.h>
 #include <stdio.h>
+#else
+#include "esp_system.h"
 #endif
 
 int mg_ssl_if_mbed_random(void *ctx, unsigned char *buf, size_t len) {
