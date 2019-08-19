@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := cmwmic
+PROJECT_NAME := ledstrip
 
 include $(IDF_PATH)/make/project.mk
 

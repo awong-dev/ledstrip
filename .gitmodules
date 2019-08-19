@@ -10,3 +10,6 @@
 [submodule "src/components/googletest/dist"]
 	path = src/components/googletest/dist
 	url = https://github.com/awong-dev/googletest.git
+[submodule "src/components/arduino-esp32"]
+	path = src/components/arduino-esp32
+	url = https://github.com/espressif/arduino-esp32.git
