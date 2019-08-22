@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style type="text/css">
+    html, body, iframe { margin: 0; padding: 0; height: 100%; }
+    iframe { display: block; width: 100%; border: none; }
+    .card { margin: 1em; padding: 0.5em; background: #d9d9d9; border-radius: 7px; }
+    .card > h2 {
+      border-bottom: dashed;
+      border-bottom-width: thin;
+      font-family: sans-serif;
+      font-size: normal;
+      margin: 0px 0px 0.5em 0px;
+      text-align: left;
+    }
+  </style>
+<title>HELLO ESP32! Now with OTA!</title>
+</head>
+<body>
+<h1>Hello World, from ESP32!</h1>
+
+<section class="card">
+  <h2> Reset </h2>
+  <form action="/api/reset" method="post">
+    <input type="submit">
+  </form>
+</section>
+
+<section class="card">
+  <h2> Configure Wifi </h2>
+  <form action="/api/wificonfig" method="post" enctype="multipart/form-data">
+    <label for="ssid">SSID</label>
+    <input type="text" name="ssid">
+    <label for="password">Password</label>
+    <input type="text" name="password">
+    <input type="submit">
+  </form>
+</section>
+</body>
+
+<section class="card">
+  <h2> Firmware Update </h2>
+  <form action="/api/ota" method="post" enctype="multipart/form-data">
+    <input type="file" name="firmware">
+    <input type="text" name="md5">
+    <input type="submit">
+  </form>
+</section>
+
+</html>
