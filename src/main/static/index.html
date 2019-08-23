@@ -15,22 +15,30 @@
       margin: 0px 0px 0.5em 0px;
       text-align: left;
     }
+    .result {
+      background: #de1f1f;
+    }
   </style>
-<title>HELLO ESP32! Now with OTA!</title>
+  <title>HELLO ESP32! Now with OTA!</title>
+  <script src="basic_controls.js"></script>
 </head>
 <body>
 <h1>Hello World, from ESP32!</h1>
 
+<section class="card result" id="result-box" hidden>
+  <p></p>
+</section>
+
 <section class="card">
   <h2> Reset </h2>
-  <form action="/api/reset" method="post">
+  <form action="javascript:void(0);" name="reset">
     <input type="submit">
   </form>
 </section>
 
 <section class="card">
   <h2> Configure Wifi </h2>
-  <form action="/api/wificonfig" method="post" enctype="multipart/form-data">
+  <form action="javascript:void(0);" name="wificonfig">
     <label for="ssid">SSID</label>
     <input type="text" name="ssid">
     <label for="password">Password</label>
@@ -41,8 +49,8 @@
 </body>
 
 <section class="card">
-  <h2> Firmware Update </h2>
-  <form action="/api/ota" method="post" enctype="multipart/form-data">
+  <h2> Flash new firmware </h2>
+  <form action="/api/ota" method="POST" enctype="multipart/form-data" name="flash">
     <input type="file" name="firmware">
     <input type="text" name="md5">
     <input type="submit">
