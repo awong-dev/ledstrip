@@ -1,2 +1,2 @@
-# cmwmic
-Attempt at a esp32 based multiple microphone system meant to augment a hearing aid.
+# LedStrip
+An esp32 and firebase setup for controling an Adafruit Neopixel strip.
