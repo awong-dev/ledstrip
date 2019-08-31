@@ -29,8 +29,8 @@ const EspCxxControls = {};
     event.preventDefault();
     const form = event.target;
     const update = {
-      ssid: form.elements.namedItem('ssid'),
-      password: form.elements.namedItem('password'),
+      ssid: form.elements.namedItem('ssid').value,
+      password: form.elements.namedItem('password').value,
     };
 
     postToUrl('/api/wificonfig', update);

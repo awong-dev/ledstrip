@@ -127,12 +127,15 @@ extern "C" void app_main(void) {
   std::string_view resp404_html(
       reinterpret_cast<const char*>(HTML_CONTENTS(resp404_html)),
       HTML_LEN(resp404_html));
-  std::string_view basic_controls_js(
-      reinterpret_cast<const char*>(HTML_CONTENTS(basic_controls_js)),
-      HTML_LEN(basic_controls_js));
   HttpServer http_server(&net_event_manager, ":80", resp404_html);
   StandardEndpoints standard_endpoints(index_html);
   standard_endpoints.RegisterEndpoints(&http_server);
+
+  // Export the javscript for the controls
+  // TODO(ajwong): These basic controls need to be moved back into esp_cxx.
+  std::string_view basic_controls_js(
+      reinterpret_cast<const char*>(HTML_CONTENTS(basic_controls_js)),
+      HTML_LEN(basic_controls_js));
   JsEndpoint basic_controls_js_endpoint(basic_controls_js);
   http_server.RegisterEndpoint("/basic_controls.js$", &basic_controls_js_endpoint);
 
@@ -143,16 +146,26 @@ extern "C" void app_main(void) {
 
   // Firebase setup.
   FirebaseDatabase firebase_db(
-      "anger2action-f3698.firebaseio.com",
-      "anger2action-f3698",
-      "/lights/ledstrip",
-      &net_event_manager);
+      "https://iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
+      "iotzombie-153122",  // "anger2action-f3698",
+      "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
+      &net_event_manager,
+      "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token"
+      "parlor-ledstrip",
+      "b4563d9bb77fff268e18");
   firebase_db.SetUpdateHandler(
       [&firebase_db, &state] {
-        // TODO(ajwong): Read from the db and update the state.
+        cJSON* data = firebase_db.Get("/devicesdev/parlor-ledstrip");
+        ESP_LOGD("ledstrip", "%s", cJSON_PrintUnformatted(data));
+          // TODO(ajwong): Read from the db and update the state.
       });
-  firebase_db.Connect();
 
-  net_event_manager.Loop();
-  ESP_LOGE(kTag, "This should never be reached!");
+  ESP_LOGI("ledstrip", "About to run server");
+  net_event_manager.RunDelayed([&firebase_db] {
+                               ESP_LOGI("ledstrip", "Connecting to FB now");
+                               firebase_db.Connect();
+                               }, 5);
+  Task http_task = Task::Create<EventManager, &EventManager::Loop>(&net_event_manager, "http", 4096);
+  while (1) { sleep(10);}
+  //ESP_LOGE(kTag, "This should never be reached!");
 }
