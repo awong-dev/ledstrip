@@ -146,11 +146,11 @@ extern "C" void app_main(void) {
 
   // Firebase setup.
   FirebaseDatabase firebase_db(
-      "https://iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
+      "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
       "iotzombie-153122",  // "anger2action-f3698",
       "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
       &net_event_manager,
-      "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token"
+      "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
       "parlor-ledstrip",
       "b4563d9bb77fff268e18");
   firebase_db.SetUpdateHandler(
@@ -164,8 +164,7 @@ extern "C" void app_main(void) {
   net_event_manager.RunDelayed([&firebase_db] {
                                ESP_LOGI("ledstrip", "Connecting to FB now");
                                firebase_db.Connect();
-                               }, 5);
-  Task http_task = Task::Create<EventManager, &EventManager::Loop>(&net_event_manager, "http", 4096);
-  while (1) { sleep(10);}
-  //ESP_LOGE(kTag, "This should never be reached!");
+                               }, 2000);
+  net_event_manager.Loop();
+  ESP_LOGE(kTag, "This should never be reached!");
 }
