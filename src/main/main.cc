@@ -78,15 +78,17 @@ class StripControl {
 
 std::atomic_uint32_t g_current_color_ = 0x0f;
 
+led_state g_state;
 void LedDriver(void* arg) {
-  led_state& state = *reinterpret_cast<led_state*>(arg);
   while (1) {
     sleep(1);
+    uint32_t color = g_current_color_;
     for (int i = 0; i < NUM_LEDS; i++) {
-      state.leds[i] = g_current_color_;
+      g_state.leds[i] = color;
     }
-    ws2812_write_leds(state);
+    ws2812_write_leds(g_state);
 
+    /*
     sleep(1);
     for (int i = 0; i < NUM_LEDS; i++) {
       state.leds[i] = state.leds[i] << 8;
@@ -98,6 +100,7 @@ void LedDriver(void* arg) {
       state.leds[i] = state.leds[i] << 8;
     }
     ws2812_write_leds(state);
+    */
   }
 }
 
@@ -143,8 +146,7 @@ extern "C" void app_main(void) {
 
   // LED strip setup.
   ws2812_control_init();
-  led_state state;
-  Task led_driver_task(&LedDriver, &state, "led");
+  Task led_driver_task(&LedDriver, nullptr, "led");
 
   // Firebase setup.
   FirebaseDatabase firebase_db(
@@ -156,15 +158,21 @@ extern "C" void app_main(void) {
       "parlor-ledstrip",
       "b4563d9bb77fff268e18");
   firebase_db.SetUpdateHandler(
-      [&firebase_db, &state] {
+      [&firebase_db] {
         cJSON* data = firebase_db.Get("devicesdev/parlor-ledstrip");
         if (data) {
           ESP_LOGI("ledstrip", "%s", cJSON_PrintUnformatted(data));
         }
-        cJSON* rgb = cJSON_GetObjectItemCaseSensitive(data, "rgb");
-        if (cJSON_IsNumber(rgb)) {
-          ESP_LOGI("ledstrip", "setting color to %x", rgb->valueint);
-          g_current_color_ = rgb->valueint;
+        cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
+        cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
+        cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
+        if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b)) {
+          uint32_t wrgb = 
+          ((g->valueint & 0xff) << 16) |
+          ((r->valueint & 0xff) << 8) |
+          (b->valueint & 0xff);
+          ESP_LOGI("ledstrip", "setting color to %x", wrgb);
+          g_current_color_ = wrgb;
         }
       });
 
