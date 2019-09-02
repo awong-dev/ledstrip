@@ -76,7 +76,7 @@ class StripControl {
   std::unique_ptr<uint32_t[]> pixels_;
 };
 
-std::atomic_uint32_t g_current_color_ = 0x0f;
+std::atomic_uint32_t g_current_color_ = 0x10ae0f;
 
 led_state g_state;
 void LedDriver(void* arg) {
@@ -166,13 +166,14 @@ extern "C" void app_main(void) {
         cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
         cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
         cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
-        if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b)) {
-          uint32_t wrgb = 
-          ((g->valueint & 0xff) << 16) |
-          ((r->valueint & 0xff) << 8) |
-          (b->valueint & 0xff);
-          ESP_LOGI("ledstrip", "setting color to %x", wrgb);
-          g_current_color_ = wrgb;
+        cJSON* w = cJSON_GetObjectItemCaseSensitive(data, "w");
+        if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b) && cJSON_IsNumber(w)) {
+          uint32_t grbw = g->valueint;
+          grbw = (grbw << 8) | r->valueint;
+          grbw = (grbw << 8) | b->valueint;
+          grbw = (grbw << 8) | w->valueint;
+          ESP_LOGI("ledstrip", "setting color to %x", grbw);
+          g_current_color_ = grbw;
         }
       });
 
