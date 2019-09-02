@@ -76,12 +76,14 @@ class StripControl {
   std::unique_ptr<uint32_t[]> pixels_;
 };
 
+std::atomic_uint32_t g_current_color_ = 0x0f;
+
 void LedDriver(void* arg) {
   led_state& state = *reinterpret_cast<led_state*>(arg);
   while (1) {
     sleep(1);
     for (int i = 0; i < NUM_LEDS; i++) {
-      state.leds[i] = 0x0f;
+      state.leds[i] = g_current_color_;
     }
     ws2812_write_leds(state);
 
@@ -155,9 +157,15 @@ extern "C" void app_main(void) {
       "b4563d9bb77fff268e18");
   firebase_db.SetUpdateHandler(
       [&firebase_db, &state] {
-        cJSON* data = firebase_db.Get("/devicesdev/parlor-ledstrip");
-        ESP_LOGD("ledstrip", "%s", cJSON_PrintUnformatted(data));
-          // TODO(ajwong): Read from the db and update the state.
+        cJSON* data = firebase_db.Get("devicesdev/parlor-ledstrip");
+        if (data) {
+          ESP_LOGI("ledstrip", "%s", cJSON_PrintUnformatted(data));
+        }
+        cJSON* rgb = cJSON_GetObjectItemCaseSensitive(data, "rgb");
+        if (cJSON_IsNumber(rgb)) {
+          ESP_LOGI("ledstrip", "setting color to %x", rgb->valueint);
+          g_current_color_ = rgb->valueint;
+        }
       });
 
   ESP_LOGI("ledstrip", "About to run server");
