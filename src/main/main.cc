@@ -5,6 +5,7 @@
 
 #include "nvs_flash.h"
 
+#include "esp_cxx/backoff.h"
 #include "esp_cxx/event_manager.h"
 #include "esp_cxx/firebase/firebase_database.h"
 #include "esp_cxx/httpd/mongoose_event_manager.h"
@@ -170,9 +171,13 @@ extern "C" void app_main(void) {
   static constexpr char kFallbackSsid[] = "ledstrip_setup";
   static constexpr char kFallbackPassword[] = "ledstrip";
   Wifi* wifi = Wifi::GetInstance();
+
+  // Trying every ~30s for wifi seems reaosnable.
+  BackoffCalculator<100,30*1000> wifi_backoff;
   wifi->SetApEventHandlers(
-      [&net_event_manager](ip_event_got_ip_t* got_ip){
+      [&net_event_manager, &wifi_backoff](ip_event_got_ip_t* got_ip){
         static bool first_run = true;
+        wifi_backoff.Reset();
         if (first_run) {
           OnNetworkUp(&net_event_manager);
           first_run = false;
@@ -182,13 +187,13 @@ extern "C" void app_main(void) {
           }
         }
       },
-      [&net_event_manager, wifi](uint8_t reason) { 
+      [&net_event_manager, wifi, &wifi_backoff](uint8_t reason) {
         ESP_LOGE(kTag, "Disconnected %d", reason);
         if (g_firebase_ptr) {
           g_firebase_ptr->Disconnect();
         }
-        // TODO(awong): We want a backoff.
-        net_event_manager.RunDelayed([wifi]{ wifi->ReconnectToAP(); }, 500);
+        net_event_manager.RunDelayed([wifi, &wifi_backoff]{ wifi->ReconnectToAP(); },
+                                     wifi_backoff.MsToNextTry());
       }
       );
   if (!wifi->ConnectToAP() && !wifi->CreateSetupNetwork(kFallbackSsid, kFallbackPassword)) {
