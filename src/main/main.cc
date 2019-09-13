@@ -104,6 +104,53 @@ void LedDriver(void* arg) {
   }
 }
 
+esp_cxx::FirebaseDatabase* g_firebase_ptr = nullptr;
+
+// Firebase setup.
+void OnNetworkUp(esp_cxx::MongooseEventManager* net_event_manager) {
+  using namespace esp_cxx;
+  // LED strip setup.
+  ws2812_control_init();
+  static Task led_driver_task(&LedDriver, nullptr, "led");
+
+  static FirebaseDatabase firebase_db(
+      "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
+      "iotzombie-153122",  // "anger2action-f3698",
+      "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
+      net_event_manager,
+      "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
+      "parlor-ledstrip",
+      "b4563d9bb77fff268e18");
+  g_firebase_ptr = &firebase_db;
+
+  firebase_db.SetUpdateHandler(
+      [] {
+      cJSON* data = firebase_db.Get("devicesdev/parlor-ledstrip");
+      if (data) {
+        ESP_LOGI(kTag, "%s", cJSON_PrintUnformatted(data));
+      }
+      cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
+      cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
+      cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
+      cJSON* w = cJSON_GetObjectItemCaseSensitive(data, "w");
+      if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b) && cJSON_IsNumber(w)) {
+        uint32_t grbw = g->valueint;
+        grbw = (grbw << 8) | r->valueint;
+        grbw = (grbw << 8) | b->valueint;
+        grbw = (grbw << 8) | w->valueint;
+        ESP_LOGI("ledstrip", "setting color to %x", grbw);
+        g_current_color_ = grbw;
+      }
+      });
+
+  ESP_LOGI("ledstrip", "About to run server");
+  net_event_manager->RunDelayed(
+      [] {
+        ESP_LOGI("ledstrip", "Connecting to FB now");
+        firebase_db.Connect();
+      }, 4000);
+}
+
 }  // namespace
 
 extern "C" void app_main(void) {
@@ -116,16 +163,39 @@ extern "C" void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
+  // Setup main event loop.
+  MongooseEventManager net_event_manager;
+
   // Setup Wifi access.
   static constexpr char kFallbackSsid[] = "ledstrip_setup";
   static constexpr char kFallbackPassword[] = "ledstrip";
-  Wifi wifi;
-  if (!wifi.ConnectToAP() && !wifi.CreateSetupNetwork(kFallbackSsid, kFallbackPassword)) {
+  Wifi* wifi = Wifi::GetInstance();
+  wifi->SetApEventHandlers(
+      [&net_event_manager](ip_event_got_ip_t* got_ip){
+        static bool first_run = true;
+        if (first_run) {
+          OnNetworkUp(&net_event_manager);
+          first_run = false;
+        } else {
+          if (g_firebase_ptr) {
+            g_firebase_ptr->Connect();
+          }
+        }
+      },
+      [&net_event_manager, wifi](uint8_t reason) { 
+        ESP_LOGE(kTag, "Disconnected %d", reason);
+        if (g_firebase_ptr) {
+          g_firebase_ptr->Disconnect();
+        }
+        // TODO(awong): We want a backoff.
+        net_event_manager.RunDelayed([wifi]{ wifi->ReconnectToAP(); }, 500);
+      }
+      );
+  if (!wifi->ConnectToAP() && !wifi->CreateSetupNetwork(kFallbackSsid, kFallbackPassword)) {
     ESP_LOGE(kTag, "Failed to connect to AP OR create a Setup Network.");
   }
 
   // Create Webserver
-  MongooseEventManager net_event_manager;
   std::string_view index_html(
       reinterpret_cast<const char*>(HTML_CONTENTS(index_html)),
       HTML_LEN(index_html));
@@ -144,44 +214,6 @@ extern "C" void app_main(void) {
   JsEndpoint basic_controls_js_endpoint(basic_controls_js);
   http_server.RegisterEndpoint("/basic_controls.js$", &basic_controls_js_endpoint);
 
-  // LED strip setup.
-  ws2812_control_init();
-  Task led_driver_task(&LedDriver, nullptr, "led");
-
-  // Firebase setup.
-  FirebaseDatabase firebase_db(
-      "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
-      "iotzombie-153122",  // "anger2action-f3698",
-      "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
-      &net_event_manager,
-      "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
-      "parlor-ledstrip",
-      "b4563d9bb77fff268e18");
-  firebase_db.SetUpdateHandler(
-      [&firebase_db] {
-        cJSON* data = firebase_db.Get("devicesdev/parlor-ledstrip");
-        if (data) {
-          ESP_LOGI("ledstrip", "%s", cJSON_PrintUnformatted(data));
-        }
-        cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
-        cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
-        cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
-        cJSON* w = cJSON_GetObjectItemCaseSensitive(data, "w");
-        if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b) && cJSON_IsNumber(w)) {
-          uint32_t grbw = g->valueint;
-          grbw = (grbw << 8) | r->valueint;
-          grbw = (grbw << 8) | b->valueint;
-          grbw = (grbw << 8) | w->valueint;
-          ESP_LOGI("ledstrip", "setting color to %x", grbw);
-          g_current_color_ = grbw;
-        }
-      });
-
-  ESP_LOGI("ledstrip", "About to run server");
-  net_event_manager.RunDelayed([&firebase_db] {
-                               ESP_LOGI("ledstrip", "Connecting to FB now");
-                               firebase_db.Connect();
-                               }, 2000);
   net_event_manager.Loop();
   ESP_LOGE(kTag, "This should never be reached!");
 }
