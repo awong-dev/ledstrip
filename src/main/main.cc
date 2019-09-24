@@ -145,11 +145,11 @@ void OnNetworkUp(esp_cxx::MongooseEventManager* net_event_manager) {
       });
 
   ESP_LOGI("ledstrip", "About to run server");
-  net_event_manager->RunDelayed(
+  net_event_manager->Run(
       [] {
         ESP_LOGI("ledstrip", "Connecting to FB now");
         firebase_db.Connect();
-      }, 4000);
+      });
 }
 
 }  // namespace
@@ -168,7 +168,7 @@ extern "C" void app_main(void) {
   tcpip_adapter_init();
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  MongooseEventManager net_event_manager;
+  static MongooseEventManager net_event_manager;
 
   // Setup Wifi access.
   static constexpr char kFallbackSsid[] = "ledstrip_setup";
@@ -176,7 +176,7 @@ extern "C" void app_main(void) {
   Wifi* wifi = Wifi::GetInstance();
 
   // Trying every ~30s for wifi seems reaosnable.
-  BackoffCalculator<100,30*1000> wifi_backoff;
+  static BackoffCalculator<100,30*1000> wifi_backoff;
   wifi->SetApEventHandlers(
       [&net_event_manager, &wifi_backoff](ip_event_got_ip_t* got_ip){
         static bool first_run = true;
