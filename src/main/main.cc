@@ -31,6 +31,16 @@ HTML_DECL(basic_controls_js);
 static const char *kTag = "ledstrip";
 
 namespace {
+std::string_view index_html_str(
+    reinterpret_cast<const char*>(HTML_CONTENTS(index_html)),
+    HTML_LEN(index_html));
+std::string_view resp404_html_str(
+    reinterpret_cast<const char*>(HTML_CONTENTS(resp404_html)),
+    HTML_LEN(resp404_html));
+std::string_view basic_controls_js_str(
+    reinterpret_cast<const char*>(HTML_CONTENTS(basic_controls_js)),
+    HTML_LEN(basic_controls_js));
+
 class StripControl {
  public:
   enum class Mode {
@@ -105,123 +115,150 @@ void LedDriver(void* arg) {
   }
 }
 
-esp_cxx::FirebaseDatabase* g_firebase_ptr = nullptr;
+using namespace esp_cxx;
 
-// Firebase setup.
-void OnNetworkUp(esp_cxx::MongooseEventManager* net_event_manager) {
-  using namespace esp_cxx;
-  // LED strip setup.
-  ws2812_control_init();
-  static Task led_driver_task(&LedDriver, nullptr, "led");
+class MongooseNetworkContext {
+ public:
+  using OnNetworkUpCb = std::function<void(bool, ip_event_got_ip_t* got_ip)>;
+  using OnDisconnectCb = std::function<void(int)>;
 
-  static FirebaseDatabase firebase_db(
-      "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
-      "iotzombie-153122",  // "anger2action-f3698",
-      "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
-      net_event_manager,
-      "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
-      "parlor-ledstrip",
-      "b4563d9bb77fff268e18");
-  g_firebase_ptr = &firebase_db;
+  MongooseNetworkContext() {
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
-  firebase_db.SetUpdateHandler(
-      [] {
-      cJSON* data = firebase_db.Get("devicesdev/parlor-ledstrip");
-      if (data) {
-        ESP_LOGI(kTag, "%s", cJSON_PrintUnformatted(data));
-      }
-      cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
-      cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
-      cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
-      cJSON* w = cJSON_GetObjectItemCaseSensitive(data, "w");
-      if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b) && cJSON_IsNumber(w)) {
-        uint32_t grbw = g->valueint;
-        grbw = (grbw << 8) | r->valueint;
-        grbw = (grbw << 8) | b->valueint;
-        grbw = (grbw << 8) | w->valueint;
-        ESP_LOGI("ledstrip", "setting color to %x", grbw);
-        g_current_color_ = grbw;
-      }
-      });
+    // Setup main event loop.
+    tcpip_adapter_init();
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  ESP_LOGI("ledstrip", "About to run server");
-  net_event_manager->Run(
-      [] {
-        ESP_LOGI("ledstrip", "Connecting to FB now");
-        firebase_db.Connect();
-      });
-}
+    net_event_manager_ == std::make_unique<MongooseEventManager>();
+  }
+
+  void Start(OnNetworkUpCb on_network_up, OnDisconnectCb on_disconnect) {
+    on_network_up_ = std::move(on_network_up);
+    on_disconnect_ = std::move(on_disconnect);
+    StartWifi();
+  }
+
+  MongooseEventManager* event_manager() { return net_event_manager_.get(); }
+
+ private:
+  std::unique_ptr<MongooseEventManager> net_event_manager_;
+  OnNetworkUpCb on_network_up_;
+  OnDisconnectCb on_disconnect_;
+
+  // Trying every ~30s for wifi seems reaosnable.
+  BackoffCalculator<100,30*1000> wifi_backoff_;
+
+  bool first_run_ = true;
+
+  void StartWifi() {
+    // Setup Wifi access.
+    static constexpr char kFallbackSsid[] = "ledstrip_setup";
+    static constexpr char kFallbackPassword[] = "ledstrip";
+    Wifi* wifi = Wifi::GetInstance();
+
+    wifi->SetApEventHandlers(
+        [this](ip_event_got_ip_t* got_ip) {
+          wifi_backoff_.Reset();
+          on_network_up_(first_run_, got_ip);
+          first_run_ = false;
+        },
+        [this, wifi] (uint8_t reason) {
+          on_disconnect_(reason);
+          int next_try_ms = wifi_backoff_.MsToNextTry();
+          // If wifi->ReconnectToAP() fails, this handler gets called again.
+          ESP_LOGW(kTag, "Wifi Next Reconnect in %dms", next_try_ms);
+          net_event_manager_->RunDelayed([wifi]{ wifi->ReconnectToAP(); },
+                                       next_try_ms);
+        }
+    );
+    if (!wifi->ConnectToAP() && !wifi->CreateSetupNetwork(kFallbackSsid, kFallbackPassword)) {
+      ESP_LOGE(kTag, "Failed to connect to AP OR create a Setup Network.");
+      abort();
+    }
+  }
+};
+
+class LedStrip {
+ public:
+  LedStrip()
+    : firebase_db_(
+        "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
+        "iotzombie-153122",  // "anger2action-f3698",
+        "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
+        network_context_.event_manager(),
+        "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
+        "parlor-ledstrip",
+        "b4563d9bb77fff268e18"),
+       http_server_(network_context_.event_manager(), ":80", resp404_html_str),
+       standard_endpoints_(index_html_str),
+       basic_controls_js_endpoint_(basic_controls_js_str) {
+    standard_endpoints_.RegisterEndpoints(&http_server_);
+    http_server_.RegisterEndpoint("/basic_controls.js$", &basic_controls_js_endpoint_);
+  }
+
+  void Start() {
+    network_context_.Start(
+        [this](bool is_first_run, ip_event_got_ip_t* got_ip){
+          ESP_LOGI(kTag, "Network start: %d", is_first_run);
+          OnNetworkUp(is_first_run);
+        },
+        [this](int reason){
+          firebase_db_.Disconnect();
+        });
+    network_context_.event_manager()->Loop();
+  }
+
+ private:
+  MongooseNetworkContext network_context_;
+  FirebaseDatabase firebase_db_;
+  HttpServer http_server_;
+  StandardEndpoints standard_endpoints_;
+  JsEndpoint basic_controls_js_endpoint_;
+
+  // Firebase setup.
+  void OnNetworkUp(bool is_first_run) {
+    if (is_first_run) {
+      // LED strip setup.
+      ws2812_control_init();
+      static Task led_driver_task(&LedDriver, nullptr, "led");
+
+      firebase_db_.SetUpdateHandler(
+          [this] {
+          cJSON* data = firebase_db_.Get("devicesdev/parlor-ledstrip");
+          if (data) {
+            ESP_LOGI(kTag, "%s", cJSON_PrintUnformatted(data));
+          }
+          cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
+          cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
+          cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
+          cJSON* w = cJSON_GetObjectItemCaseSensitive(data, "w");
+          if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b) && cJSON_IsNumber(w)) {
+            uint32_t grbw = g->valueint;
+            grbw = (grbw << 8) | r->valueint;
+            grbw = (grbw << 8) | b->valueint;
+            grbw = (grbw << 8) | w->valueint;
+            ESP_LOGI("ledstrip", "setting color to %x", grbw);
+            g_current_color_ = grbw;
+          }
+          });
+    }
+
+    ESP_LOGI("ledstrip", "Connecting to FB now");
+    firebase_db_.Connect();
+  }
+};
 
 }  // namespace
 
 extern "C" void app_main(void) {
   using namespace esp_cxx;
 
-  esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES) {
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    ret = nvs_flash_init();
-  }
-  ESP_ERROR_CHECK(ret);
-
-  // Setup main event loop.
-  tcpip_adapter_init();
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-  static MongooseEventManager net_event_manager;
-
-  // Setup Wifi access.
-  static constexpr char kFallbackSsid[] = "ledstrip_setup";
-  static constexpr char kFallbackPassword[] = "ledstrip";
-  Wifi* wifi = Wifi::GetInstance();
-
-  // Trying every ~30s for wifi seems reaosnable.
-  static BackoffCalculator<100,30*1000> wifi_backoff;
-  wifi->SetApEventHandlers(
-      [&net_event_manager, &wifi_backoff](ip_event_got_ip_t* got_ip){
-        static bool first_run = true;
-        wifi_backoff.Reset();
-        if (first_run) {
-          OnNetworkUp(&net_event_manager);
-          first_run = false;
-        } else {
-          if (g_firebase_ptr) {
-            g_firebase_ptr->Connect();
-          }
-        }
-      },
-      [&net_event_manager, wifi, &wifi_backoff](uint8_t reason) {
-        ESP_LOGE(kTag, "Disconnected %d", reason);
-        if (g_firebase_ptr) {
-          g_firebase_ptr->Disconnect();
-        }
-        net_event_manager.RunDelayed([wifi, &wifi_backoff]{ wifi->ReconnectToAP(); },
-                                     wifi_backoff.MsToNextTry());
-      }
-      );
-  if (!wifi->ConnectToAP() && !wifi->CreateSetupNetwork(kFallbackSsid, kFallbackPassword)) {
-    ESP_LOGE(kTag, "Failed to connect to AP OR create a Setup Network.");
-  }
-
-  // Create Webserver
-  std::string_view index_html(
-      reinterpret_cast<const char*>(HTML_CONTENTS(index_html)),
-      HTML_LEN(index_html));
-  std::string_view resp404_html(
-      reinterpret_cast<const char*>(HTML_CONTENTS(resp404_html)),
-      HTML_LEN(resp404_html));
-  HttpServer http_server(&net_event_manager, ":80", resp404_html);
-  StandardEndpoints standard_endpoints(index_html);
-  standard_endpoints.RegisterEndpoints(&http_server);
-
-  // Export the javscript for the controls
-  // TODO(ajwong): These basic controls need to be moved back into esp_cxx.
-  std::string_view basic_controls_js(
-      reinterpret_cast<const char*>(HTML_CONTENTS(basic_controls_js)),
-      HTML_LEN(basic_controls_js));
-  JsEndpoint basic_controls_js_endpoint(basic_controls_js);
-  http_server.RegisterEndpoint("/basic_controls.js$", &basic_controls_js_endpoint);
-
-  net_event_manager.Loop();
+  auto led_strip = std::make_unique<LedStrip>();
+  led_strip->Start();
   ESP_LOGE(kTag, "This should never be reached!");
 }
