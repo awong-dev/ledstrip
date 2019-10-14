@@ -28,9 +28,24 @@ HTML_DECL(resp404_html);
 HTML_DECL(index_html);
 HTML_DECL(basic_controls_js);
 
-static const char *kTag = "ledstrip";
 
 namespace {
+const char *kTag = "ledstrip";
+const char *kConfigJsonPath = "/devices/parlor-ledstrip";
+
+int GetValueOrZero(cJSON* item) {
+  if (cJSON_IsNumber(item)) {
+    return item->valueint;
+  }
+  return 0;
+}
+
+void PrintHeap(esp_cxx::EventManager* em) {
+  uint32_t freeheap = xPortGetFreeHeapSize();
+  ESP_LOGW(kTag, "xPortGetFreeHeapSize = %d bytes\n", freeheap);
+  em->RunDelayed([em]() {PrintHeap(em);}, 2000);
+}
+
 std::string_view index_html_str(
     reinterpret_cast<const char*>(HTML_CONTENTS(index_html)),
     HTML_LEN(index_html));
@@ -134,7 +149,7 @@ class MongooseNetworkContext {
     tcpip_adapter_init();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    net_event_manager_ == std::make_unique<MongooseEventManager>();
+    net_event_manager_ = std::make_unique<MongooseEventManager>();
   }
 
   void Start(OnNetworkUpCb on_network_up, OnDisconnectCb on_disconnect) {
@@ -189,27 +204,29 @@ class LedStrip {
     : firebase_db_(
         "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
         "iotzombie-153122",  // "anger2action-f3698",
-        "/devicesdev/parlor-ledstrip", // "/lights/ledstrip",
+        kConfigJsonPath, // "/lights/ledstrip",
         network_context_.event_manager(),
         "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
         "parlor-ledstrip",
         "b4563d9bb77fff268e18"),
-       http_server_(network_context_.event_manager(), ":80", resp404_html_str),
+       http_server_(network_context_.event_manager(), resp404_html_str),
        standard_endpoints_(index_html_str),
        basic_controls_js_endpoint_(basic_controls_js_str) {
-    standard_endpoints_.RegisterEndpoints(&http_server_);
-    http_server_.RegisterEndpoint("/basic_controls.js$", &basic_controls_js_endpoint_);
   }
 
   void Start() {
     network_context_.Start(
         [this](bool is_first_run, ip_event_got_ip_t* got_ip){
           ESP_LOGI(kTag, "Network start: %d", is_first_run);
-          OnNetworkUp(is_first_run);
+          network_context_.event_manager()->Run(
+              [this, is_first_run] {
+                OnNetworkUp(is_first_run);
+              });
         },
         [this](int reason){
           firebase_db_.Disconnect();
         });
+    PrintHeap(network_context_.event_manager());
     network_context_.event_manager()->Loop();
   }
 
@@ -229,24 +246,26 @@ class LedStrip {
 
       firebase_db_.SetUpdateHandler(
           [this] {
-          cJSON* data = firebase_db_.Get("devicesdev/parlor-ledstrip");
-          if (data) {
-            ESP_LOGI(kTag, "%s", cJSON_PrintUnformatted(data));
-          }
-          cJSON* r = cJSON_GetObjectItemCaseSensitive(data, "r");
-          cJSON* g = cJSON_GetObjectItemCaseSensitive(data, "g");
-          cJSON* b = cJSON_GetObjectItemCaseSensitive(data, "b");
-          cJSON* w = cJSON_GetObjectItemCaseSensitive(data, "w");
-          if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b) && cJSON_IsNumber(w)) {
-            uint32_t grbw = g->valueint;
-            grbw = (grbw << 8) | r->valueint;
-            grbw = (grbw << 8) | b->valueint;
-            grbw = (grbw << 8) | w->valueint;
+            cJSON* data = firebase_db_.Get(kConfigJsonPath);
+            if (data) {
+              ESP_LOGI(kTag, "%s", PrintJson(data).get());
+            }
+            int r = GetValueOrZero(cJSON_GetObjectItemCaseSensitive(data, "r"));
+            int g = GetValueOrZero(cJSON_GetObjectItemCaseSensitive(data, "g"));
+            int b = GetValueOrZero(cJSON_GetObjectItemCaseSensitive(data, "b"));
+            int w = GetValueOrZero(cJSON_GetObjectItemCaseSensitive(data, "w"));
+            uint32_t grbw = g;
+            grbw = (grbw << 8) | r;
+            grbw = (grbw << 8) | b;
+            grbw = (grbw << 8) | w;
             ESP_LOGI("ledstrip", "setting color to %x", grbw);
             g_current_color_ = grbw;
-          }
           });
     }
+
+    http_server_.Listen(":80");
+    standard_endpoints_.RegisterEndpoints(&http_server_);
+    http_server_.RegisterEndpoint("/basic_controls.js$", &basic_controls_js_endpoint_);
 
     ESP_LOGI("ledstrip", "Connecting to FB now");
     firebase_db_.Connect();
