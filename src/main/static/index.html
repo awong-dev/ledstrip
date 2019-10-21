@@ -30,10 +30,8 @@
 </section>
 
 <section class="card">
-  <h2> Reset </h2>
-  <form action="javascript:void(0);" name="reset">
-    <input type="submit">
-  </form>
+  <h2> Stats </h2>
+  <ul id="stats"></ul>
 </section>
 
 <section class="card">
@@ -46,15 +44,42 @@
     <input type="submit">
   </form>
 </section>
-</body>
+
+<section class="card">
+  <h2> Configure Firebase </h2>
+  <form action="javascript:void(0);" name="firebase">
+    <label for="url">URL</label>
+    <input type="text" name="url">
+
+    <label for="device_name">Device Name</label>
+    <input type="text" name="device_name">
+
+    <label for="device_secret">Device Secret</label>
+    <input type="text" name="device_secret">
+
+    <label for="token_url">Device Auth Token URL</label>
+    <input type="text" name="token_url">
+    <input type="submit">
+  </form>
+</section>
+
+<hr>
+
+<section class="card">
+  <h2> Reset </h2>
+  <form action="javascript:void(0);" name="reset">
+    <input type="submit">
+  </form>
+</section>
 
 <section class="card">
   <h2> Flash new firmware </h2>
-  <form action="/api/ota" method="POST" enctype="multipart/form-data" name="flash">
+  <form action="/api/ota" method="POST" enctype="multipart/form-data" name="firmware">
     <input type="file" name="firmware">
     <input type="text" name="md5">
     <input type="submit">
   </form>
 </section>
 
+</body>
 </html>
