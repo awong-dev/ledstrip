@@ -47,12 +47,14 @@ const EspCxxControls = {};
   const onConfigSubmit = (event) => {
     event.preventDefault();
     const form = event.target;
-    const data = {};
+    const data = [];
     [...form.elements].forEach((input) => {
-      data[input.name] = input.value;
+      const entry = {};
+      entry['k'] = form.name;
+      entry['d'] = input.value;
+      data.push(entry);
     });
-    data['_namespace'] = form.name;
-    postToUrl('/api/config', data);
+    postToUrl('/api/config', JSON.stringify(data));
     // TODO(awong): Reset
   };
 

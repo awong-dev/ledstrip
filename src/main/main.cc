@@ -7,6 +7,7 @@
 
 #include "esp_cxx/backoff.h"
 #include "esp_cxx/event_manager.h"
+#include "esp_cxx/firebase/firebase_config.h"
 #include "esp_cxx/firebase/firebase_database.h"
 #include "esp_cxx/httpd/mongoose_event_manager.h"
 #include "esp_cxx/httpd/http_server.h"
@@ -188,7 +189,7 @@ class MongooseNetworkContext {
           // If wifi->ReconnectToAP() fails, this handler gets called again.
           ESP_LOGW(kTag, "Wifi Next Reconnect in %dms", next_try_ms);
           net_event_manager_->RunDelayed([wifi]{ wifi->ReconnectToAP(); },
-                                       next_try_ms);
+                                         next_try_ms);
         }
     );
     if (!wifi->ConnectToAP() && !wifi->CreateSetupNetwork(kFallbackSsid, kFallbackPassword)) {
@@ -201,20 +202,26 @@ class MongooseNetworkContext {
 class LedStrip {
  public:
   LedStrip()
-    : firebase_db_(
-        "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
-        "iotzombie-153122",  // "anger2action-f3698",
-        kConfigJsonPath, // "/lights/ledstrip",
-        network_context_.event_manager(),
-        "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
-        "parlor-ledstrip",
-        "b4563d9bb77fff268e18"),
-       http_server_(network_context_.event_manager(), resp404_html_str),
-       standard_endpoints_(index_html_str),
-       basic_controls_js_endpoint_(basic_controls_js_str) {
+    : standard_endpoints_(index_html_str),
+      basic_controls_js_endpoint_(basic_controls_js_str),
+      http_server_(network_context_.event_manager(), resp404_html_str),
+      firebase_db_(network_context_.event_manager()) {
   }
 
   void Start() {
+    config_.Load();
+    firebase_db_.SetConnectInfo(
+        config_.host(), // "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
+        config_.database(),  // "iotzombie-153122",  // "anger2action-f3698",
+        config_.listen_path()  // kConfigJsonPath // "/lights/ledstrip"
+        );
+
+    firebase_db_.SetAuthInfo(
+        config_.auth_token_url(),  // "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
+        config_.device_id(),  // "parlor-ledstrip",
+        config_.password()  // "b4563d9bb77fff268e18"
+        );
+
     network_context_.Start(
         [this](bool is_first_run, ip_event_got_ip_t* got_ip){
           ESP_LOGI(kTag, "Network start: %d", is_first_run);
@@ -232,10 +239,11 @@ class LedStrip {
 
  private:
   MongooseNetworkContext network_context_;
-  FirebaseDatabase firebase_db_;
-  HttpServer http_server_;
+  FirebaseConfig config_;
   StandardEndpoints standard_endpoints_;
   JsEndpoint basic_controls_js_endpoint_;
+  HttpServer http_server_;
+  FirebaseDatabase firebase_db_;
 
   // Firebase setup.
   void OnNetworkUp(bool is_first_run) {
