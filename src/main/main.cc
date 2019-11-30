@@ -219,7 +219,7 @@ class LedStrip {
     firebase_db_.SetAuthInfo(
         config_.auth_token_url(),  // "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
         config_.device_id(),  // "parlor-ledstrip",
-        config_.password()  // "b4563d9bb77fff268e18"
+        config_.secret()  // "b4563d9bb77fff268e18"
         );
 
     network_context_.Start(

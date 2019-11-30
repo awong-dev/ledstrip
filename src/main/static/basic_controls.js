@@ -24,6 +24,13 @@ const EspCxxControls = {};
     .catch(error => displayResult('Exception', error.message));
   };
 
+  const doReset() {
+    fetch(url, '/api/reset');
+    console.log("Reloading in 5 seconds");
+    // Reload page in 5 seconds.
+    setTimeout(location.reload, 5000);
+  }
+
   // Handles submitting new config data for wifi.
   const onWifiConfigSubmit = (event) => {
     event.preventDefault();
@@ -39,23 +46,20 @@ const EspCxxControls = {};
   // Handles a reset request.
   const onResetSubmit = (event) => {
     event.preventDefault();
-    postToUrl('/api/reset', {});
-    // TODO(awong): Reload page after 5 seconds.
+    doReset();
   };
 
   // Handles a Firebase config request.
   const onConfigSubmit = (event) => {
     event.preventDefault();
     const form = event.target;
-    const data = [];
+    const data = {};
     [...form.elements].forEach((input) => {
-      const entry = {};
-      entry['k'] = form.name;
-      entry['d'] = input.value;
-      data.push(entry);
+      data[input.name] = input.value;
     });
-    postToUrl('/api/config', JSON.stringify(data));
-    // TODO(awong): Reset
+    postToUrl('/api/config', data);
+
+    doReset();
   };
 
   const updateStats = () => {
@@ -81,6 +85,6 @@ const EspCxxControls = {};
     document.forms.wificonfig.addEventListener('submit', onWifiConfigSubmit);
     document.forms.reset.addEventListener('submit', onResetSubmit);
     document.forms.firebase.addEventListener('submit', onConfigSubmit);
-    setInterval(updateStats, 1000);
+//    setInterval(updateStats, 1000);
   });
 })();
