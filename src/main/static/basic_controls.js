@@ -53,11 +53,12 @@ const EspCxxControls = {};
   const onConfigSubmit = (event) => {
     event.preventDefault();
     const form = event.target;
+    form.dataset.prefix
     const data = {};
     [...form.elements].forEach((input) => {
       data[input.name] = input.value;
     });
-    postToUrl('/api/config', data);
+    postToUrl('/api/config', {prefix: form.dataset.prefix, config_data: data});
 
     doReset();
   };
@@ -85,6 +86,7 @@ const EspCxxControls = {};
     document.forms.wificonfig.addEventListener('submit', onWifiConfigSubmit);
     document.forms.reset.addEventListener('submit', onResetSubmit);
     document.forms.firebase.addEventListener('submit', onConfigSubmit);
+    document.forms.logging.addEventListener('submit', onConfigSubmit);
 //    setInterval(updateStats, 1000);
   });
 })();

@@ -6,9 +6,11 @@
 #include "nvs_flash.h"
 
 #include "esp_cxx/backoff.h"
+#include "esp_cxx/data_buffer.h"
 #include "esp_cxx/event_manager.h"
 #include "esp_cxx/firebase/firebase_config.h"
 #include "esp_cxx/firebase/firebase_database.h"
+#include "esp_cxx/httpd/connection.h"
 #include "esp_cxx/httpd/mongoose_event_manager.h"
 #include "esp_cxx/httpd/http_server.h"
 #include "esp_cxx/httpd/standard_endpoints.h"
@@ -28,7 +30,6 @@
 HTML_DECL(resp404_html);
 HTML_DECL(index_html);
 HTML_DECL(basic_controls_js);
-
 
 namespace {
 const char *kTag = "ledstrip";
@@ -201,15 +202,24 @@ class MongooseNetworkContext {
 
 class LedStrip {
  public:
-  LedStrip()
-    : standard_endpoints_(index_html_str),
-      basic_controls_js_endpoint_(basic_controls_js_str),
-      http_server_(network_context_.event_manager(), resp404_html_str),
-      firebase_db_(network_context_.event_manager()) {
-  }
-
   void Start() {
-    config_.Load();
+    auto syslog_endpoint = config_store_.GetValue("log", "syslog_url");
+    if (syslog_endpoint) {
+      syslog_.Connect(syslog_endpoint.value());
+      network_context_.event_manager()->SetOnWakeTask(
+          [this]() {
+            int n = 0;
+            while (auto log_message = log_buffer_.Get()) {
+              if (n++ > 10) break;  // Don't block too long logging.
+              syslog_.Send(log_message.value());
+            }
+          });
+      SetLogFilter([this](std::string_view msg){
+                     log_buffer_.Put(std::string(msg));
+                     network_context_.event_manager()->Wake();
+                   });
+    }
+    config_.Load(&config_store_);
     firebase_db_.SetConnectInfo(
         config_.host(), // "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
         config_.database(),  // "iotzombie-153122",  // "anger2action-f3698",
@@ -239,11 +249,14 @@ class LedStrip {
 
  private:
   MongooseNetworkContext network_context_;
+  ConfigStore config_store_;
   FirebaseConfig config_;
-  StandardEndpoints standard_endpoints_;
-  JsEndpoint basic_controls_js_endpoint_;
-  HttpServer http_server_;
-  FirebaseDatabase firebase_db_;
+  StandardEndpoints standard_endpoints_{index_html_str};
+  JsEndpoint basic_controls_js_endpoint_{basic_controls_js_str};
+  HttpServer http_server_{network_context_.event_manager(), resp404_html_str};
+  FirebaseDatabase firebase_db_{network_context_.event_manager()};
+  DataBuffer<std::string, 20> log_buffer_;
+  Connection syslog_{network_context_.event_manager(), {}};
 
   // Firebase setup.
   void OnNetworkUp(bool is_first_run) {

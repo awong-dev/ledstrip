@@ -47,25 +47,36 @@
 
 <section class="card">
   <h2> Configure Firebase </h2>
-  <form action="javascript:void(0);" name="firebase">
-    <label for="fb:host">Host</label>
-    <input type="text" name="fb:host">
+  <form action="javascript:void(0);" name="firebase" data-prefix="fb">
+    <label for="host">Host</label>
+    <input type="text" name="host">
 
-    <label for="fb:database">Database</label>
-    <input type="text" name="fb:database">
+    <label for="database">Database</label>
+    <input type="text" name="database">
 
-    <label for="fb:listen_path">Listen Path</label>
-    <input type="text" name="fb:listen_path">
+    <label for="listen_path">Listen Path</label>
+    <input type="text" name="listen_path">
 
-    <label for="fb:auth_token_url">Device Auth Token URL</label>
-    <input type="text" name="fb:auth_token_url">
+    <label for="auth_token_url">Device Auth Token URL</label>
+    <input type="text" name="auth_token_url">
 
-    <label for="fb:device_id">Device Id</label>
-    <input type="text" name="fb:device_id">
+    <label for="device_id">Device Id</label>
+    <input type="text" name="device_id">
 
-    <label for="fb:secret">Device Secret</label>
-    <input type="text" name="fb:secret">
+    <label for="secret">Device Secret</label>
+    <input type="text" name="secret">
 
+    <input type="submit">
+  </form>
+</section>
+
+<hr>
+
+<section class="card">
+  <h2> Configure Logging </h2>
+  <form action="javascript:void(0);" name="logging" data-prefix="log">
+    <label for="url">Syslog URL (udp://host:port)</label>
+    <input type="text" name="url">
     <input type="submit">
   </form>
 </section>
