@@ -24,12 +24,12 @@ const EspCxxControls = {};
     .catch(error => displayResult('Exception', error.message));
   };
 
-  const doReset() {
-    fetch(url, '/api/reset');
+  const doReset = () => {
+    fetch('/api/reset');
     console.log("Reloading in 5 seconds");
     // Reload page in 5 seconds.
     setTimeout(location.reload, 5000);
-  }
+  };
 
   // Handles submitting new config data for wifi.
   const onWifiConfigSubmit = (event) => {
@@ -56,37 +56,58 @@ const EspCxxControls = {};
     form.dataset.prefix
     const data = {};
     [...form.elements].forEach((input) => {
-      data[input.name] = input.value;
+      if (input.name) {
+        data[input.name] = input.value;
+      }
     });
     postToUrl('/api/config', {prefix: form.dataset.prefix, config_data: data});
 
-    doReset();
+    setTimeout(doReset, 5000);
   };
 
-  const updateStats = () => {
-    fetch("/api/stats")
-      .then(response => {
-              const stats_element = document.getElementById('stats');
-              while (stats_element.firstChild) {
-                stats_element.removeChild(stats_element.firstChild);
-              }
-              const stats = response.json();
-              // Iterate through stats and dump into list items.
-              for (let key in stats) {
-                const li = document.createElement('li');
-                li.textContent = `${key}: ${stats[key]}`;
-                stats_element.appendChild(li);
-              }
-      })
-      .catch(error => displayResult('Exception', error.message));
+  const updateStats = async () => {
+    try {
+      const response = await fetch("/api/stats");
+      const stats = await response.json();
+
+      const stats_element = document.getElementById('stats');
+      while (stats_element.firstChild) {
+        stats_element.removeChild(stats_element.firstChild);
+      }
+
+      // Iterate through stats and dump into list items.
+      for (let key in stats) {
+        const li = document.createElement('li');
+        li.textContent = `${key}: ${stats[key]}`;
+        stats_element.appendChild(li);
+      }
+    } catch(error) {
+     displayResult('Exception', error.message);
+    }
+  };
+
+  const loadValues = async () => {
+    const response = await fetch("/api/config");
+    const config_values = await response.json();
+    for (const [full_key, value] of Object.entries(config_values)) {
+      const [prefix, key] = full_key.split(":");
+      const form = document.forms[prefix];
+      if (form) {
+        const input = form.elements[key];
+        if (input) {
+          input.value = value;
+        }
+      }
+    }
   };
 
   //// Init code
   window.addEventListener('load', () => {
     document.forms.wificonfig.addEventListener('submit', onWifiConfigSubmit);
     document.forms.reset.addEventListener('submit', onResetSubmit);
-    document.forms.firebase.addEventListener('submit', onConfigSubmit);
-    document.forms.logging.addEventListener('submit', onConfigSubmit);
-//    setInterval(updateStats, 1000);
+    document.forms.fb.addEventListener('submit', onConfigSubmit);
+    document.forms.log.addEventListener('submit', onConfigSubmit);
+    setInterval(updateStats, 10000);
+    loadValues();
   });
 })();

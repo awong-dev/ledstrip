@@ -44,8 +44,8 @@ int GetValueOrZero(cJSON* item) {
 
 void PrintHeap(esp_cxx::EventManager* em) {
   uint32_t freeheap = xPortGetFreeHeapSize();
-  ESP_LOGW(kTag, "xPortGetFreeHeapSize = %d bytes\n", freeheap);
-  em->RunDelayed([em]() {PrintHeap(em);}, 2000);
+  ESP_LOGI(kTag, "xPortGetFreeHeapSize = %d bytes", freeheap);
+  em->RunDelayed([em]() {PrintHeap(em);}, 5000);
 }
 
 std::string_view index_html_str(
@@ -203,9 +203,11 @@ class MongooseNetworkContext {
 class LedStrip {
  public:
   void Start() {
-    auto syslog_endpoint = config_store_.GetValue("log", "syslog_url");
-    if (syslog_endpoint) {
-      syslog_.Connect(syslog_endpoint.value());
+    config_.Load(&config_store_);
+
+    auto syslog_endpoint = config_store_.GetValue("log", "url");
+    ESP_LOGI(kTag, "Syslog URL: %s", syslog_endpoint ? syslog_endpoint.value().c_str() : "");
+    if (syslog_endpoint && syslog_.Connect(syslog_endpoint.value())) {
       network_context_.event_manager()->SetOnWakeTask(
           [this]() {
             int n = 0;
@@ -217,9 +219,10 @@ class LedStrip {
       SetLogFilter([this](std::string_view msg){
                      log_buffer_.Put(std::string(msg));
                      network_context_.event_manager()->Wake();
-                   });
+                   },
+                   config_.device_id());
     }
-    config_.Load(&config_store_);
+
     firebase_db_.SetConnectInfo(
         config_.host(), // "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
         config_.database(),  // "iotzombie-153122",  // "anger2action-f3698",
@@ -227,7 +230,8 @@ class LedStrip {
         );
 
     firebase_db_.SetAuthInfo(
-        config_.auth_token_url(),  // "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
+        config_.auth_token_url(),
+        // "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
         config_.device_id(),  // "parlor-ledstrip",
         config_.secret()  // "b4563d9bb77fff268e18"
         );
@@ -283,6 +287,20 @@ class LedStrip {
             g_current_color_ = grbw;
           });
     }
+
+    firebase_db_.SetAuthHandler(
+        [this] (bool is_ok, cJSON* status) {
+          if (is_ok) {
+            std::string listen_path = config_.listen_path() + "/" + config_.device_id();
+            unique_cJSON_ptr device_info(cJSON_CreateObject());
+            cJSON_AddStringToObject(device_info.get(), "name", "Parlor Ledstrip");
+            cJSON_AddStringToObject(device_info.get(), "type", "rgb");
+            firebase_db_.Publish(listen_path, std::move(device_info));
+          } else {
+            ESP_LOGE(kTag, "Auth failed: %s", PrintJson(status).get());
+          }
+        });
+
 
     http_server_.Listen(":80");
     standard_endpoints_.RegisterEndpoints(&http_server_);
