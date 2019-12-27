@@ -28,19 +28,7 @@ const EspCxxControls = {};
     fetch('/api/reset');
     console.log("Reloading in 5 seconds");
     // Reload page in 5 seconds.
-    setTimeout(location.reload, 5000);
-  };
-
-  // Handles submitting new config data for wifi.
-  const onWifiConfigSubmit = (event) => {
-    event.preventDefault();
-    const form = event.target;
-    const update = {
-      ssid: form.elements.namedItem('ssid').value,
-      password: form.elements.namedItem('password').value,
-    };
-
-    postToUrl('/api/wificonfig', update);
+    setTimeout(() => {location.reload();}, 5000);
   };
 
   // Handles a reset request.
@@ -53,14 +41,13 @@ const EspCxxControls = {};
   const onConfigSubmit = (event) => {
     event.preventDefault();
     const form = event.target;
-    form.dataset.prefix
     const data = {};
     [...form.elements].forEach((input) => {
       if (input.name) {
         data[input.name] = input.value;
       }
     });
-    postToUrl('/api/config', {prefix: form.dataset.prefix, config_data: data});
+    postToUrl('/api/config', {prefix: form.name, config_data: data});
 
     setTimeout(doReset, 5000);
   };
@@ -103,7 +90,8 @@ const EspCxxControls = {};
 
   //// Init code
   window.addEventListener('load', () => {
-    document.forms.wificonfig.addEventListener('submit', onWifiConfigSubmit);
+    document.forms.iotz.addEventListener('submit', onConfigSubmit);
+    document.forms.wifi.addEventListener('submit', onConfigSubmit);
     document.forms.reset.addEventListener('submit', onResetSubmit);
     document.forms.fb.addEventListener('submit', onConfigSubmit);
     document.forms.log.addEventListener('submit', onConfigSubmit);

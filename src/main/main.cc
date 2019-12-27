@@ -33,7 +33,6 @@ HTML_DECL(basic_controls_js);
 
 namespace {
 const char *kTag = "ledstrip";
-const char *kConfigJsonPath = "/devices/parlor-ledstrip";
 
 int GetValueOrZero(cJSON* item) {
   if (cJSON_IsNumber(item)) {
@@ -223,19 +222,9 @@ class LedStrip {
                    config_.device_id());
     }
 
-    firebase_db_.SetConnectInfo(
-        config_.host(), // "iotzombie-153122.firebaseio.com", // "anger2action-f3698.firebaseio.com",
-        config_.database(),  // "iotzombie-153122",  // "anger2action-f3698",
-        config_.listen_path()  // kConfigJsonPath // "/lights/ledstrip"
-        );
+    firebase_db_.SetConnectInfo(config_.host(), config_.database(), config_.listen_path());
 
-    firebase_db_.SetAuthInfo(
-        config_.auth_token_url(),
-        // "https://us-central1-iotzombie-153122.cloudfunctions.net/get_firebase_id_token",
-        config_.device_id(),  // "parlor-ledstrip",
-        config_.secret()  // "b4563d9bb77fff268e18"
-        );
-
+    firebase_db_.SetAuthInfo(config_.auth_token_url(), config_.device_id(), config_.secret()); 
     network_context_.Start(
         [this](bool is_first_run, ip_event_got_ip_t* got_ip){
           ESP_LOGI(kTag, "Network start: %d", is_first_run);
@@ -271,7 +260,7 @@ class LedStrip {
 
       firebase_db_.SetUpdateHandler(
           [this] {
-            cJSON* data = firebase_db_.Get(kConfigJsonPath);
+            cJSON* data = firebase_db_.Get(config_.listen_path());
             if (data) {
               ESP_LOGI(kTag, "%s", PrintJson(data).get());
             }
@@ -291,11 +280,15 @@ class LedStrip {
     firebase_db_.SetAuthHandler(
         [this] (bool is_ok, cJSON* status) {
           if (is_ok) {
-            std::string listen_path = config_.listen_path() + "/" + config_.device_id();
-            unique_cJSON_ptr device_info(cJSON_CreateObject());
-            cJSON_AddStringToObject(device_info.get(), "name", "Parlor Ledstrip");
-            cJSON_AddStringToObject(device_info.get(), "type", "rgb");
-            firebase_db_.Publish(listen_path, std::move(device_info));
+            static constexpr char kIotzPrefix[] = "iotz";
+            unique_cJSON_ptr display_name(
+                cJSON_CreateString(
+                    config_store_.GetValue(kIotzPrefix, "disp_name").value_or("unset").c_str()));
+            unique_cJSON_ptr type(
+                cJSON_CreateString(
+                    config_store_.GetValue(kIotzPrefix, "type").value_or("rgb").c_str()));
+            firebase_db_.Publish(config_.listen_path() + "/" + "name", std::move(display_name));
+            firebase_db_.Publish(config_.listen_path() + "/" + "type", std::move(type));
           } else {
             ESP_LOGE(kTag, "Auth failed: %s", PrintJson(status).get());
           }

@@ -35,8 +35,21 @@
 </section>
 
 <section class="card">
+  <h2> IoTZ Config </h2>
+  <form action="javascript:void(0);" name="iotz">
+    <label for="disp_name">Display Name:</label>
+    <input type="text" name="disp_name">
+
+    <label for="type">Type:</label>
+    <input type="text" name="type" value="rgb">
+    <input type="submit">
+  </form>
+</section>
+
+
+<section class="card">
   <h2> Configure Wifi </h2>
-  <form action="javascript:void(0);" name="wificonfig">
+  <form action="javascript:void(0);" name="wifi">
     <label for="ssid">SSID</label>
     <input type="text" name="ssid">
     <label for="password">Password</label>
@@ -47,15 +60,15 @@
 
 <section class="card">
   <h2> Configure Firebase </h2>
-  <form action="javascript:void(0);" name="fb" data-prefix="fb">
+  <form action="javascript:void(0);" name="fb">
     <label for="host">Host</label>
     <input type="text" name="host">
 
     <label for="database">Database</label>
     <input type="text" name="database">
 
-    <label for="path">Listen Path</label>
-    <input type="text" name="path">
+    <label for="path">Device Root</label>
+    <input type="text" name="device_root">
 
     <label for="auth_url">Device Auth Token URL</label>
     <input type="text" name="auth_url">
@@ -74,7 +87,7 @@
 
 <section class="card">
   <h2> Configure Logging </h2>
-  <form action="javascript:void(0);" name="log" data-prefix="log">
+  <form action="javascript:void(0);" name="log">
     <label for="url">Syslog URL (udp://host:port)</label>
     <input type="text" name="url">
     <input type="submit">
