@@ -28,7 +28,7 @@ const EspCxxControls = {};
     fetch('/api/reset');
     console.log("Reloading in 5 seconds");
     // Reload page in 5 seconds.
-    setTimeout(() => {location.reload();}, 5000);
+    setTimeout(() => {location.reload(true);}, 5000);
   };
 
   // Handles a reset request.

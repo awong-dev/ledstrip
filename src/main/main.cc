@@ -45,6 +45,11 @@ void PrintHeap(esp_cxx::EventManager* em) {
   uint32_t freeheap = xPortGetFreeHeapSize();
   ESP_LOGI(kTag, "xPortGetFreeHeapSize = %d bytes", freeheap);
   em->RunDelayed([em]() {PrintHeap(em);}, 5000);
+  // If this is down to 5k, something is leaking. Reboot.
+  if (freeheap < (5 * 1024)) {
+    ESP_LOGE(kTag, "Down to less than 5k rebooting!!");
+    esp_restart();
+  }
 }
 
 std::string_view index_html_str(
@@ -209,9 +214,7 @@ class LedStrip {
     if (syslog_endpoint && syslog_.Connect(syslog_endpoint.value())) {
       network_context_.event_manager()->SetOnWakeTask(
           [this]() {
-            int n = 0;
             while (auto log_message = log_buffer_.Get()) {
-              if (n++ > 10) break;  // Don't block too long logging.
               syslog_.Send(log_message.value());
             }
           });
